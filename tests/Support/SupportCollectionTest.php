@@ -307,6 +307,31 @@ class SupportCollectionTest extends TestCase
         $this->assertCount(2, $c);
     }
 
+    public function testCountableByWithoutPredicate()
+    {
+        $c = new Collection(['foo', 'foo', 'foo', 'bar', 'bar', 'foobar']);
+        $this->assertEquals(['foo' => 3, 'bar' => 2, 'foobar' => 1], $c->countBy()->all());
+
+        $c = new Collection([true, true, false, false, false]);
+        $this->assertEquals([true => 2, false => 3], $c->countBy()->all());
+
+        $c = new Collection([1, 5, 1, 5, 5, 1]);
+        $this->assertEquals([1 => 3, 5 => 3], $c->countBy()->all());
+    }
+
+    public function testCountableByWithPredicate()
+    {
+        $c = new Collection(['alice', 'aaron', 'bob', 'carla']);
+        $this->assertEquals(['a' => 2, 'b' => 1, 'c' => 1], $c->countBy(function ($name) {
+            return substr($name, 0, 1);
+        })->all());
+
+        $c = new Collection([1, 2, 3, 4, 5]);
+        $this->assertEquals([true => 2, false => 3], $c->countBy(function ($i) {
+            return $i % 2 === 0;
+        })->all());
+    }
+
     public function testIterable()
     {
         $c = new Collection(['foo']);
@@ -720,6 +745,60 @@ class SupportCollectionTest extends TestCase
         $this->assertEquals(['b' => 'brown', 'c' => 'blue', 'red'], $c1->diffAssocUsing($c2, 'strcasecmp')->all());
     }
 
+    public function testDuplicates()
+    {
+        $duplicates = Collection::make([1, 2, 1, 'laravel', null, 'laravel', 'php', null])->duplicates()->all();
+        $this->assertSame([2 => 1, 5 => 'laravel', 7 => null], $duplicates);
+
+        // does loose comparison
+        $duplicates = Collection::make([2, '2', [], null])->duplicates()->all();
+        $this->assertSame([1 => '2', 3 => null], $duplicates);
+
+        // works with mix of primitives
+        $duplicates = Collection::make([1, '2', ['laravel'], ['laravel'], null, '2'])->duplicates()->all();
+        $this->assertSame([3 => ['laravel'], 5 => '2'], $duplicates);
+
+        // works with mix of objects and primitives **excepts numbers**.
+        $expected = new Collection(['laravel']);
+        $duplicates = Collection::make([new Collection(['laravel']), $expected, $expected, [], '2', '2'])->duplicates()->all();
+        $this->assertSame([1 => $expected, 2 => $expected, 5 => '2'], $duplicates);
+    }
+
+    public function testDuplicatesWithKey()
+    {
+        $items = [['framework' => 'vue'], ['framework' => 'laravel'], ['framework' => 'laravel']];
+        $duplicates = Collection::make($items)->duplicates('framework')->all();
+        $this->assertSame([2 => 'laravel'], $duplicates);
+    }
+
+    public function testDuplicatesWithCallback()
+    {
+        $items = [['framework' => 'vue'], ['framework' => 'laravel'], ['framework' => 'laravel']];
+        $duplicates = Collection::make($items)->duplicates(function ($item) {
+            return $item['framework'];
+        })->all();
+        $this->assertSame([2 => 'laravel'], $duplicates);
+    }
+
+    public function testDuplicatesWithStrict()
+    {
+        $duplicates = Collection::make([1, 2, 1, 'laravel', null, 'laravel', 'php', null])->duplicatesStrict()->all();
+        $this->assertSame([2 => 1, 5 => 'laravel', 7 => null], $duplicates);
+
+        // does strict comparison
+        $duplicates = Collection::make([2, '2', [], null])->duplicatesStrict()->all();
+        $this->assertSame([], $duplicates);
+
+        // works with mix of primitives
+        $duplicates = Collection::make([1, '2', ['laravel'], ['laravel'], null, '2'])->duplicatesStrict()->all();
+        $this->assertSame([3 => ['laravel'], 5 => '2'], $duplicates);
+
+        // works with mix of primitives, objects, and numbers
+        $expected = new Collection(['laravel']);
+        $duplicates = Collection::make([new Collection(['laravel']), $expected, $expected, [], '2', '2'])->duplicatesStrict()->all();
+        $this->assertSame([2 => $expected, 5 => '2'], $duplicates);
+    }
+
     public function testEach()
     {
         $c = new Collection($original = [1, 2, 'foo' => 'bar', 'bam' => 'baz']);
@@ -878,6 +957,19 @@ class SupportCollectionTest extends TestCase
         $this->assertEquals([1, 2, 3, 4, 5, 6], $data->collapse()->all());
     }
 
+    public function testJoin()
+    {
+        $this->assertEquals('a, b, c', (new Collection(['a', 'b', 'c']))->join(', '));
+
+        $this->assertEquals('a, b and c', (new Collection(['a', 'b', 'c']))->join(', ', ' and '));
+
+        $this->assertEquals('a and b', (new Collection(['a', 'b']))->join(', ', ' and '));
+
+        $this->assertEquals('a', (new Collection(['a']))->join(', ', ' and '));
+
+        $this->assertEquals('', (new Collection([]))->join(', ', ' and '));
+    }
+
     public function testCrossJoin()
     {
         // Cross join with an array
@@ -983,14 +1075,14 @@ class SupportCollectionTest extends TestCase
     {
         $data = new Collection(['b' => 'dayle', 'a' => 'taylor']);
 
-        $this->assertEquals(['a' => 'taylor', 'b' => 'dayle'], $data->sortKeys()->all());
+        $this->assertSame(['a' => 'taylor', 'b' => 'dayle'], $data->sortKeys()->all());
     }
 
     public function testSortKeysDesc()
     {
         $data = new Collection(['a' => 'taylor', 'b' => 'dayle']);
 
-        $this->assertEquals(['b' => 'dayle', 'a' => 'taylor'], $data->sortKeys()->all());
+        $this->assertSame(['b' => 'dayle', 'a' => 'taylor'], $data->sortKeysDesc()->all());
     }
 
     public function testReverse()
@@ -1821,6 +1913,21 @@ class SupportCollectionTest extends TestCase
         $this->assertEquals([
             '0-taylorotwell' => ['firstname' => 'Taylor', 'lastname' => 'Otwell', 'locale' => 'US'],
             '1-lucasmichot' => ['firstname' => 'Lucas', 'lastname' => 'Michot', 'locale' => 'FR'],
+        ], $result->all());
+    }
+
+    public function testKeyByObject()
+    {
+        $data = new Collection([
+            ['firstname' => 'Taylor', 'lastname' => 'Otwell', 'locale' => 'US'],
+            ['firstname' => 'Lucas', 'lastname' => 'Michot', 'locale' => 'FR'],
+        ]);
+        $result = $data->keyBy(function ($item, $key) {
+            return new Collection([$key, $item['firstname'], $item['lastname']]);
+        });
+        $this->assertEquals([
+            '[0,"Taylor","Otwell"]' => ['firstname' => 'Taylor', 'lastname' => 'Otwell', 'locale' => 'US'],
+            '[1,"Lucas","Michot"]' => ['firstname' => 'Lucas', 'lastname' => 'Michot', 'locale' => 'FR'],
         ], $result->all());
     }
 

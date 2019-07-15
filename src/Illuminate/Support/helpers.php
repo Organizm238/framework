@@ -1,14 +1,11 @@
 <?php
 
-use PhpOption\Option;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Env;
 use Illuminate\Support\Optional;
 use Illuminate\Support\Collection;
-use Dotenv\Environment\DotenvFactory;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\HigherOrderTapProxy;
-use Dotenv\Environment\Adapter\EnvConstAdapter;
-use Dotenv\Environment\Adapter\ServerConstAdapter;
 
 if (! function_exists('append_config')) {
     /**
@@ -239,7 +236,7 @@ if (! function_exists('data_set')) {
 
 if (! function_exists('e')) {
     /**
-     * Escape HTML special characters in a string.
+     * Encode HTML special characters in a string.
      *
      * @param  \Illuminate\Contracts\Support\Htmlable|string  $value
      * @param  bool  $doubleEncode
@@ -265,34 +262,7 @@ if (! function_exists('env')) {
      */
     function env($key, $default = null)
     {
-        static $variables;
-
-        if ($variables === null) {
-            $variables = (new DotenvFactory([new EnvConstAdapter, new ServerConstAdapter]))->createImmutable();
-        }
-
-        return Option::fromValue($variables->get($key))
-            ->map(function ($value) {
-                switch (strtolower($value)) {
-                    case 'true':
-                    case '(true)':
-                        return true;
-                    case 'false':
-                    case '(false)':
-                        return false;
-                    case 'empty':
-                    case '(empty)':
-                        return '';
-                    case 'null':
-                    case '(null)':
-                        return;
-                }
-
-                return $value;
-            })
-            ->getOrCall(function () use ($default) {
-                return value($default);
-            });
+        return Env::get($key, $default);
     }
 }
 
@@ -406,11 +376,12 @@ if (! function_exists('retry')) {
      * @param  int  $times
      * @param  callable  $callback
      * @param  int  $sleep
+     * @param  callable  $when
      * @return mixed
      *
      * @throws \Exception
      */
-    function retry($times, callable $callback, $sleep = 0)
+    function retry($times, callable $callback, $sleep = 0, $when = null)
     {
         $attempts = 0;
         $times--;
@@ -421,7 +392,7 @@ if (! function_exists('retry')) {
         try {
             return $callback($attempts);
         } catch (Exception $e) {
-            if (! $times) {
+            if (! $times || ($when && ! $when($e))) {
                 throw $e;
             }
 

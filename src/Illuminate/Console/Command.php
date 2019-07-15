@@ -62,6 +62,13 @@ class Command extends SymfonyCommand
     protected $description;
 
     /**
+     * The console command help text.
+     *
+     * @var string
+     */
+    protected $help;
+
+    /**
      * Indicates whether the command should be shown in the Artisan command list.
      *
      * @var bool
@@ -108,6 +115,8 @@ class Command extends SymfonyCommand
         // related properties of the command. If a signature wasn't used to build
         // the command we'll set the arguments and the options on this command.
         $this->setDescription($this->description);
+
+        $this->setHelp($this->help);
 
         $this->setHidden($this->isHidden());
 
@@ -348,11 +357,11 @@ class Command extends SymfonyCommand
      * Prompt the user for input with auto completion.
      *
      * @param  string  $question
-     * @param  array   $choices
+     * @param  array|callable  $choices
      * @param  string|null  $default
      * @return mixed
      */
-    public function anticipate($question, array $choices, $default = null)
+    public function anticipate($question, $choices, $default = null)
     {
         return $this->askWithCompletion($question, $choices, $default);
     }
@@ -361,15 +370,17 @@ class Command extends SymfonyCommand
      * Prompt the user for input with auto completion.
      *
      * @param  string  $question
-     * @param  array   $choices
+     * @param  array|callable $choices
      * @param  string|null  $default
      * @return mixed
      */
-    public function askWithCompletion($question, array $choices, $default = null)
+    public function askWithCompletion($question, $choices, $default = null)
     {
         $question = new Question($question, $default);
 
-        $question->setAutocompleterValues($choices);
+        is_callable($choices)
+            ? $question->setAutocompleterCallback($choices)
+            : $question->setAutocompleterValues($choices);
 
         return $this->output->askQuestion($question);
     }
@@ -451,7 +462,7 @@ class Command extends SymfonyCommand
      * Write a string as standard output.
      *
      * @param  string  $string
-     * @param  string  $style
+     * @param  string|null  $style
      * @param  int|string|null  $verbosity
      * @return void
      */

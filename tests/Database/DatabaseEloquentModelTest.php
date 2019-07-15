@@ -1507,6 +1507,18 @@ class DatabaseEloquentModelTest extends TestCase
         $this->assertNull($replicated->updated_at);
     }
 
+    public function testReplicatingEventIsFiredWhenReplicatingModel()
+    {
+        $model = new EloquentModelStub;
+
+        $model->setEventDispatcher($events = m::mock(Dispatcher::class));
+        $events->shouldReceive('dispatch')->once()->with('eloquent.replicating: '.get_class($model), m::on(function ($m) use ($model) {
+            return $model->is($m);
+        }));
+
+        $model->replicate();
+    }
+
     public function testIncrementOnExistingModelCallsQueryAndSetsAttribute()
     {
         $model = m::mock(EloquentModelStub::class.'[newQueryWithoutRelationships]');
@@ -1802,8 +1814,16 @@ class DatabaseEloquentModelTest extends TestCase
         ];
 
         $this->assertInstanceOf(Builder::class, $model->scopes($scopes));
-
         $this->assertSame($scopes, $model->scopesCalled);
+    }
+
+    public function testScopesMethodWithString()
+    {
+        $model = new EloquentModelStub;
+        $this->addMockConnection($model);
+
+        $this->assertInstanceOf(Builder::class, $model->scopes('published'));
+        $this->assertSame(['published'], $model->scopesCalled);
     }
 
     public function testIsWithNull()
@@ -1854,7 +1874,7 @@ class DatabaseEloquentModelTest extends TestCase
 
         $called = false;
 
-        EloquentModelStub::withoutTouching(function () use (&$called, $model) {
+        EloquentModelStub::withoutTouching(function () use (&$called) {
             $called = true;
         });
 
@@ -1867,7 +1887,7 @@ class DatabaseEloquentModelTest extends TestCase
 
         $called = false;
 
-        Model::withoutTouchingOn([EloquentModelStub::class], function () use (&$called, $model) {
+        Model::withoutTouchingOn([EloquentModelStub::class], function () use (&$called) {
             $called = true;
         });
 
@@ -1883,6 +1903,27 @@ class DatabaseEloquentModelTest extends TestCase
         $connection->shouldReceive('query')->andReturnUsing(function () use ($connection, $grammar, $processor) {
             return new BaseBuilder($connection, $grammar, $processor);
         });
+    }
+
+    public function testTouchingModelWithTimestamps()
+    {
+        $this->assertFalse(
+            Model::isIgnoringTouch(Model::class)
+        );
+    }
+
+    public function testNotTouchingModelWithUpdatedAtNull()
+    {
+        $this->assertTrue(
+            Model::isIgnoringTouch(EloquentModelWithUpdatedAtNull::class)
+        );
+    }
+
+    public function testNotTouchingModelWithoutTimestamps()
+    {
+        $this->assertTrue(
+            Model::isIgnoringTouch(EloquentModelWithoutTimestamps::class)
+        );
     }
 }
 
@@ -2290,4 +2331,16 @@ class EloquentModelEventObjectStub extends Model
     protected $dispatchesEvents = [
         'saving' => EloquentModelSavingEventStub::class,
     ];
+}
+
+class EloquentModelWithoutTimestamps extends Model
+{
+    protected $table = 'stub';
+    public $timestamps = false;
+}
+
+class EloquentModelWithUpdatedAtNull extends Model
+{
+    protected $table = 'stub';
+    const UPDATED_AT = null;
 }

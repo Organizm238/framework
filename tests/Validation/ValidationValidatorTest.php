@@ -1085,6 +1085,12 @@ class ValidationValidatorTest extends TestCase
         $v = new Validator($trans, ['lhs' => 15, 'rhs' => 10], ['lhs' => 'numeric|gt:rhs']);
         $this->assertTrue($v->passes());
 
+        $v = new Validator($trans, ['lhs' => 15, 'rhs' => 'string'], ['lhs' => 'numeric|gt:rhs']);
+        $this->assertTrue($v->fails());
+
+        $v = new Validator($trans, ['lhs' => 15], ['lhs' => 'numeric|gt:rhs']);
+        $this->assertTrue($v->fails());
+
         $v = new Validator($trans, ['lhs' => 'longer string', 'rhs' => 'string'], ['lhs' => 'gt:rhs']);
         $this->assertTrue($v->passes());
 
@@ -1106,6 +1112,12 @@ class ValidationValidatorTest extends TestCase
     {
         $trans = $this->getIlluminateArrayTranslator();
         $v = new Validator($trans, ['lhs' => 15, 'rhs' => 10], ['lhs' => 'numeric|lt:rhs']);
+        $this->assertTrue($v->fails());
+
+        $v = new Validator($trans, ['lhs' => 15, 'rhs' => 'string'], ['lhs' => 'numeric|lt:rhs']);
+        $this->assertTrue($v->fails());
+
+        $v = new Validator($trans, ['lhs' => 15], ['lhs' => 'numeric|lt:rhs']);
         $this->assertTrue($v->fails());
 
         $v = new Validator($trans, ['lhs' => 'longer string', 'rhs' => 'string'], ['lhs' => 'lt:rhs']);
@@ -1131,6 +1143,12 @@ class ValidationValidatorTest extends TestCase
         $v = new Validator($trans, ['lhs' => 15, 'rhs' => 15], ['lhs' => 'numeric|gte:rhs']);
         $this->assertTrue($v->passes());
 
+        $v = new Validator($trans, ['lhs' => 15, 'rhs' => 'string'], ['lhs' => 'numeric|gte:rhs']);
+        $this->assertTrue($v->fails());
+
+        $v = new Validator($trans, ['lhs' => 15], ['lhs' => 'numeric|gte:rhs']);
+        $this->assertTrue($v->fails());
+
         $v = new Validator($trans, ['lhs' => 'longer string', 'rhs' => 'string'], ['lhs' => 'gte:rhs']);
         $this->assertTrue($v->passes());
 
@@ -1153,6 +1171,12 @@ class ValidationValidatorTest extends TestCase
         $trans = $this->getIlluminateArrayTranslator();
         $v = new Validator($trans, ['lhs' => 15, 'rhs' => 15], ['lhs' => 'numeric|lte:rhs']);
         $this->assertTrue($v->passes());
+
+        $v = new Validator($trans, ['lhs' => 15, 'rhs' => 'string'], ['lhs' => 'numeric|lte:rhs']);
+        $this->assertTrue($v->fails());
+
+        $v = new Validator($trans, ['lhs' => 15], ['lhs' => 'numeric|lte:rhs']);
+        $this->assertTrue($v->fails());
 
         $v = new Validator($trans, ['lhs' => 'longer string', 'rhs' => 'string'], ['lhs' => 'lte:rhs']);
         $this->assertTrue($v->fails());
@@ -1209,6 +1233,33 @@ class ValidationValidatorTest extends TestCase
 
         $v = new Validator($trans, ['foo' => 'true'], ['foo' => 'Accepted']);
         $this->assertTrue($v->passes());
+    }
+
+    public function testValidateEndsWith()
+    {
+        $trans = $this->getIlluminateArrayTranslator();
+        $v = new Validator($trans, ['x' => 'hello world'], ['x' => 'ends_with:hello']);
+        $this->assertFalse($v->passes());
+
+        $trans = $this->getIlluminateArrayTranslator();
+        $v = new Validator($trans, ['x' => 'hello world'], ['x' => 'ends_with:world']);
+        $this->assertTrue($v->passes());
+
+        $trans = $this->getIlluminateArrayTranslator();
+        $v = new Validator($trans, ['x' => 'hello world'], ['x' => 'ends_with:world,hello']);
+        $this->assertTrue($v->passes());
+
+        $trans = $this->getIlluminateArrayTranslator();
+        $trans->addLines(['validation.ends_with' => 'The :attribute must end with one of the following values :values'], 'en');
+        $v = new Validator($trans, ['url' => 'laravel.com'], ['url' => 'ends_with:http']);
+        $this->assertFalse($v->passes());
+        $this->assertEquals('The url must end with one of the following values http', $v->messages()->first('url'));
+
+        $trans = $this->getIlluminateArrayTranslator();
+        $trans->addLines(['validation.ends_with' => 'The :attribute must end with one of the following values :values'], 'en');
+        $v = new Validator($trans, ['url' => 'laravel.com'], ['url' => 'ends_with:http,https']);
+        $this->assertFalse($v->passes());
+        $this->assertEquals('The url must end with one of the following values http, https', $v->messages()->first('url'));
     }
 
     public function testValidateStartsWith()
@@ -1889,7 +1940,9 @@ class ValidationValidatorTest extends TestCase
         $v = new Validator($trans, ['email' => 'foo'], ['email' => 'Unique:users,email_addr,NULL,id_col,foo,bar']);
         $mock = m::mock(PresenceVerifierInterface::class);
         $mock->shouldReceive('setConnection')->once()->with(null);
-        $mock->shouldReceive('getCount')->once()->with('users', 'email_addr', 'foo', null, 'id_col', ['foo' => 'bar'])->andReturn(2);
+        $mock->shouldReceive('getCount')->once()->withArgs(function () {
+            return func_get_args() === ['users', 'email_addr', 'foo', null, 'id_col', ['foo' => 'bar']];
+        })->andReturn(2);
         $v->setPresenceVerifier($mock);
         $this->assertFalse($v->passes());
     }
@@ -2015,6 +2068,25 @@ class ValidationValidatorTest extends TestCase
         $trans = $this->getIlluminateArrayTranslator();
         $v = new Validator($trans, ['x' => 'aslsdlks'], ['x' => 'Email']);
         $this->assertFalse($v->passes());
+
+        $v = new Validator($trans, ['x' => ['not a string']], ['x' => 'Email']);
+        $this->assertFalse($v->passes());
+
+        $v = new Validator($trans, ['x' => new class {
+            public function __toString()
+            {
+                return 'aslsdlks';
+            }
+        }], ['x' => 'Email']);
+        $this->assertFalse($v->passes());
+
+        $v = new Validator($trans, ['x' => new class {
+            public function __toString()
+            {
+                return 'foo@gmail.com';
+            }
+        }], ['x' => 'Email']);
+        $this->assertTrue($v->passes());
 
         $v = new Validator($trans, ['x' => 'foo@gmail.com'], ['x' => 'Email']);
         $this->assertTrue($v->passes());
@@ -4062,6 +4134,34 @@ class ValidationValidatorTest extends TestCase
         ]);
     }
 
+    public function testNestedInvalidMethod()
+    {
+        $trans = $this->getIlluminateArrayTranslator();
+        $v = new Validator($trans, [
+            'testvalid' => 'filled',
+            'testinvalid' => '',
+            'records' => [
+                'ABC123',
+                'ABC122',
+                'ABB132',
+                'ADCD23',
+            ],
+        ], [
+            'testvalid' => 'filled',
+            'testinvalid' => 'filled',
+            'records.*' => [
+                'required',
+                'regex:/[A-F]{3}[0-9]{3}/',
+            ],
+        ]);
+        $this->assertEquals($v->invalid(), [
+            'testinvalid' => '',
+            'records' => [
+                3 => 'ADCD23',
+            ],
+        ]);
+    }
+
     public function testMultipleFileUploads()
     {
         $trans = $this->getIlluminateArrayTranslator();
@@ -4339,6 +4439,14 @@ class ValidationValidatorTest extends TestCase
 
         $this->assertEquals(['first' => 'john', 'preferred' => 'john'], $data);
         $this->assertEquals(1, $validateCount);
+    }
+
+    public function testMultiplePassesCalls()
+    {
+        $trans = $this->getIlluminateArrayTranslator();
+        $v = new Validator($trans, [], ['foo' => 'string|required']);
+        $this->assertFalse($v->passes());
+        $this->assertFalse($v->passes());
     }
 
     /**

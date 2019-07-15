@@ -65,6 +65,36 @@ class ContainerTest extends TestCase
         $this->assertEquals('Dayle', $container->make('name'));
     }
 
+    public function testSingletonIfDoesntRegisterIfBindingAlreadyRegistered()
+    {
+        $container = new Container;
+        $class = new stdClass;
+        $container->singleton('class', function () use ($class) {
+            return $class;
+        });
+        $otherClass = new stdClass;
+        $container->singletonIf('class', function () use ($otherClass) {
+            return $otherClass;
+        });
+
+        $this->assertSame($class, $container->make('class'));
+    }
+
+    public function testSingletonIfDoesRegisterIfBindingNotRegisteredYet()
+    {
+        $container = new Container;
+        $class = new stdClass;
+        $container->singleton('class', function () use ($class) {
+            return $class;
+        });
+        $otherClass = new stdClass;
+        $container->singletonIf('otherClass', function () use ($otherClass) {
+            return $otherClass;
+        });
+
+        $this->assertSame($otherClass, $container->make('otherClass'));
+    }
+
     public function testSharedClosureResolution()
     {
         $container = new Container;
@@ -272,6 +302,15 @@ class ContainerTest extends TestCase
 
         $container = new Container;
         $container->make(ContainerDependentStub::class, []);
+    }
+
+    public function testBindingResolutionExceptionMessageWhenClassDoesNotExist()
+    {
+        $this->expectException(BindingResolutionException::class);
+        $this->expectExceptionMessage('Target class [Foo\Bar\Baz\DummyClass] does not exist.');
+
+        $container = new Container;
+        $container->build('Foo\Bar\Baz\DummyClass');
     }
 
     public function testForgetInstanceForgetsInstance()

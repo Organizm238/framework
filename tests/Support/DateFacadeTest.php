@@ -56,10 +56,6 @@ class DateFacadeTest extends TestCase
 
     public function testCarbonImmutable()
     {
-        if (! class_exists(CarbonImmutable::class)) {
-            $this->markTestSkipped('Test for Carbon 2 only');
-        }
-
         DateFactory::use(CarbonImmutable::class);
         $this->assertSame(CarbonImmutable::class, get_class(Date::now()));
         DateFactory::use(Carbon::class);
@@ -91,5 +87,14 @@ class DateFacadeTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         DateFactory::use(42);
+    }
+
+    public function testMacro()
+    {
+        Date::macro('returnNonDate', function () {
+            return 'string';
+        });
+
+        $this->assertSame('string', Date::returnNonDate());
     }
 }

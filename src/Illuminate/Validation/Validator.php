@@ -265,7 +265,7 @@ class Validator implements ValidatorContract
     {
         $this->messages = new MessageBag;
 
-        $this->distinctValues = [];
+        [$this->distinctValues, $this->failedRules] = [[], []];
 
         // We'll spin through each rule, validating the attributes attached to that
         // rule. Any error messages will be added to the containers with each of
@@ -655,9 +655,19 @@ class Validator implements ValidatorContract
             $this->passes();
         }
 
-        return array_intersect_key(
+        $invalid = array_intersect_key(
             $this->data, $this->attributesThatHaveMessages()
         );
+
+        $result = [];
+
+        $failed = Arr::only(Arr::dot($invalid), array_keys($this->failed()));
+
+        foreach ($failed as $key => $failure) {
+            Arr::set($result, $key, $failure);
+        }
+
+        return $result;
     }
 
     /**

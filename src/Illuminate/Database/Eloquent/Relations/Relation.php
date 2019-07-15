@@ -317,7 +317,6 @@ abstract class Relation
     protected function whereInMethod(Model $model, $key)
     {
         return $model->getKeyName() === last(explode('.', $key))
-                    && $model->getIncrementing()
                     && in_array($model->getKeyType(), ['int', 'integer'])
                         ? 'whereIntegerInRaw'
                         : 'whereIn';
@@ -367,7 +366,7 @@ abstract class Relation
      */
     public static function getMorphedModel($alias)
     {
-        return self::$morphMap[$alias] ?? null;
+        return static::$morphMap[$alias] ?? null;
     }
 
     /**

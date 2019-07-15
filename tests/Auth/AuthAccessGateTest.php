@@ -31,7 +31,6 @@ class AuthAccessGateTest extends TestCase
     public function test_before_can_take_an_array_callback_as_object()
     {
         $gate = new Gate(new Container, function () {
-            return null;
         });
 
         $gate->before([new AccessGateTestBeforeCallback, 'allowEverything']);
@@ -42,7 +41,6 @@ class AuthAccessGateTest extends TestCase
     public function test_before_can_take_an_array_callback_as_object_static()
     {
         $gate = new Gate(new Container, function () {
-            return null;
         });
 
         $gate->before([new AccessGateTestBeforeCallback, 'allowEverythingStatically']);
@@ -53,7 +51,6 @@ class AuthAccessGateTest extends TestCase
     public function test_before_can_take_an_array_callback_with_static_method()
     {
         $gate = new Gate(new Container, function () {
-            return null;
         });
 
         $gate->before([AccessGateTestBeforeCallback::class, 'allowEverythingStatically']);
@@ -64,7 +61,6 @@ class AuthAccessGateTest extends TestCase
     public function test_before_can_allow_guests()
     {
         $gate = new Gate(new Container, function () {
-            return null;
         });
 
         $gate->before(function (?StdClass $user) {
@@ -77,7 +73,6 @@ class AuthAccessGateTest extends TestCase
     public function test_after_can_allow_guests()
     {
         $gate = new Gate(new Container, function () {
-            return null;
         });
 
         $gate->after(function (?StdClass $user) {
@@ -90,7 +85,6 @@ class AuthAccessGateTest extends TestCase
     public function test_closures_can_allow_guest_users()
     {
         $gate = new Gate(new Container, function () {
-            return null;
         });
 
         $gate->define('foo', function (?StdClass $user) {
@@ -110,7 +104,6 @@ class AuthAccessGateTest extends TestCase
         unset($_SERVER['__laravel.testBefore']);
 
         $gate = new Gate(new Container, function () {
-            return null;
         });
 
         $gate->policy(AccessGateTestDummy::class, AccessGateTestPolicyThatAllowsGuests::class);
@@ -134,7 +127,6 @@ class AuthAccessGateTest extends TestCase
         $_SERVER['__laravel.testBefore'] = false;
 
         $gate = new Gate(new Container, function () {
-            return null;
         });
 
         $gate->policy(AccessGateTestDummy::class, AccessGateTestPolicyWithNonGuestBefore::class);
@@ -154,7 +146,6 @@ class AuthAccessGateTest extends TestCase
         $_SERVER['__laravel.gateAfter2'] = false;
 
         $gate = new Gate(new Container, function () {
-            return null;
         });
 
         $gate->before(function (?StdClass $user) {
@@ -342,10 +333,20 @@ class AuthAccessGateTest extends TestCase
 
         $dummy = new AccessGateTestDummy;
 
+        $gate->before(function ($user, $ability, array $arguments) use ($dummy) {
+            $this->assertCount(1, $arguments);
+            $this->assertSame($dummy, $arguments[0]);
+        });
+
         $gate->define('foo', function ($user, $x) use ($dummy) {
-            $this->assertEquals($dummy, $x);
+            $this->assertSame($dummy, $x);
 
             return true;
+        });
+
+        $gate->after(function ($user, $ability, $result, array $arguments) use ($dummy) {
+            $this->assertCount(1, $arguments);
+            $this->assertSame($dummy, $arguments[0]);
         });
 
         $this->assertTrue($gate->check('foo', $dummy));
@@ -358,11 +359,21 @@ class AuthAccessGateTest extends TestCase
         $dummy1 = new AccessGateTestDummy;
         $dummy2 = new AccessGateTestDummy;
 
+        $gate->before(function ($user, $ability, array $arguments) use ($dummy1, $dummy2) {
+            $this->assertCount(2, $arguments);
+            $this->assertSame([$dummy1, $dummy2], $arguments);
+        });
+
         $gate->define('foo', function ($user, $x, $y) use ($dummy1, $dummy2) {
-            $this->assertEquals($dummy1, $x);
-            $this->assertEquals($dummy2, $y);
+            $this->assertSame($dummy1, $x);
+            $this->assertSame($dummy2, $y);
 
             return true;
+        });
+
+        $gate->after(function ($user, $ability, $result, array $arguments) use ($dummy1, $dummy2) {
+            $this->assertCount(2, $arguments);
+            $this->assertSame([$dummy1, $dummy2], $arguments);
         });
 
         $this->assertTrue($gate->check('foo', [$dummy1, $dummy2]));
@@ -507,6 +518,32 @@ class AuthAccessGateTest extends TestCase
         $this->assertTrue($gate->forUser((object) ['id' => 2])->check('foo'));
     }
 
+    public function test_for_user_method_attaches_a_new_user_to_a_new_gate_instance_with_guess_callback()
+    {
+        $gate = $this->getBasicGate();
+
+        $gate->define('foo', function () {
+            return true;
+        });
+
+        $counter = 0;
+        $guesserCallback = function () use (&$counter) {
+            $counter++;
+        };
+        $gate->guessPolicyNamesUsing($guesserCallback);
+        $gate->getPolicyFor('fooClass');
+        $this->assertEquals(1, $counter);
+
+        // now the guesser callback should be present on the new gate as well
+        $newGate = $gate->forUser((object) ['id' => 1]);
+
+        $newGate->getPolicyFor('fooClass');
+        $this->assertEquals(2, $counter);
+
+        $newGate->getPolicyFor('fooClass');
+        $this->assertEquals(3, $counter);
+    }
+
     /**
      * @dataProvider notCallableDataProvider
      */
@@ -536,12 +573,53 @@ class AuthAccessGateTest extends TestCase
     {
         $this->expectException(AuthorizationException::class);
         $this->expectExceptionMessage('You are not an admin.');
+        $this->expectExceptionCode(null);
 
         $gate = $this->getBasicGate();
 
         $gate->policy(AccessGateTestDummy::class, AccessGateTestPolicy::class);
 
         $gate->authorize('create', new AccessGateTestDummy);
+    }
+
+    public function test_authorize_throws_unauthorized_exception_with_custom_status_code()
+    {
+        $this->expectException(AuthorizationException::class);
+        $this->expectExceptionMessage('Not allowed to view as it is not published.');
+        $this->expectExceptionCode('unpublished');
+
+        $gate = $this->getBasicGate();
+
+        $gate->policy(AccessGateTestDummy::class, AccessGateTestPolicyWithCode::class);
+
+        $gate->authorize('view', new AccessGateTestDummy);
+    }
+
+    public function test_authorize_with_policy_that_returns_denied_response_object_throws_exception()
+    {
+        $this->expectException(AuthorizationException::class);
+        $this->expectExceptionMessage('Not allowed.');
+        $this->expectExceptionCode('some_code');
+
+        $gate = $this->getBasicGate();
+
+        $gate->policy(AccessGateTestDummy::class, AccessGateTestPolicyWithDeniedResponseObject::class);
+
+        $gate->authorize('create', new AccessGateTestDummy);
+    }
+
+    public function test_policy_that_throws_authorization_exception_is_caught_in_inspect()
+    {
+        $gate = $this->getBasicGate();
+
+        $gate->policy(AccessGateTestDummy::class, AccessGateTestPolicyThrowingAuthorizationException::class);
+
+        $response = $gate->inspect('create', new AccessGateTestDummy);
+
+        $this->assertTrue($response->denied());
+        $this->assertFalse($response->allowed());
+        $this->assertEquals('Not allowed.', $response->message());
+        $this->assertEquals('some_code', $response->code());
     }
 
     public function test_authorize_returns_allowed_response()
@@ -556,6 +634,36 @@ class AuthAccessGateTest extends TestCase
         $this->assertInstanceOf(Response::class, $response);
         $this->assertNull($response->message());
         $this->assertTrue($check);
+    }
+
+    public function test_response_returns_response_when_ability_granted()
+    {
+        $gate = $this->getBasicGate(true);
+
+        $gate->policy(AccessGateTestDummy::class, AccessGateTestPolicyWithCode::class);
+
+        $response = $gate->inspect('view', new AccessGateTestDummy);
+
+        $this->assertInstanceOf(Response::class, $response);
+        $this->assertNull($response->message());
+        $this->assertTrue($response->allowed());
+        $this->assertFalse($response->denied());
+        $this->assertNull($response->code());
+    }
+
+    public function test_response_returns_response_when_ability_denied()
+    {
+        $gate = $this->getBasicGate();
+
+        $gate->policy(AccessGateTestDummy::class, AccessGateTestPolicyWithCode::class);
+
+        $response = $gate->inspect('view', new AccessGateTestDummy);
+
+        $this->assertInstanceOf(Response::class, $response);
+        $this->assertEquals('Not allowed to view as it is not published.', $response->message());
+        $this->assertFalse($response->allowed());
+        $this->assertTrue($response->denied());
+        $this->assertEquals($response->code(), 'unpublished');
     }
 
     public function test_authorize_returns_an_allowed_response_for_a_truthy_return()
@@ -602,6 +710,15 @@ class AuthAccessGateTest extends TestCase
         $gate->policy(AccessGateTestDummy::class, AccessGateTestPolicyWithNoPermissions::class);
 
         $this->assertFalse($gate->any(['edit', 'update'], new AccessGateTestDummy));
+    }
+
+    public function test_none_ability_check_passes_if_all_fail()
+    {
+        $gate = $this->getBasicGate();
+
+        $gate->policy(AccessGateTestDummy::class, AccessGateTestPolicyWithNoPermissions::class);
+
+        $this->assertTrue($gate->none(['edit', 'update'], new AccessGateTestDummy));
     }
 
     public function test_every_ability_check_passes_if_all_pass()
@@ -671,7 +788,6 @@ class AuthAccessGateTest extends TestCase
     public function test_classes_can_be_defined_as_callbacks_using_at_notation_for_guests()
     {
         $gate = new Gate(new Container, function () {
-            return null;
         });
 
         $gate->define('foo', AccessGateTestClassForGuest::class.'@foo');
@@ -960,5 +1076,35 @@ class AccessGateTestBeforeCallback
     public static function allowEverythingStatically($user = null)
     {
         return true;
+    }
+}
+
+class AccessGateTestPolicyWithCode
+{
+    use HandlesAuthorization;
+
+    public function view($user)
+    {
+        if (! $user->isAdmin) {
+            return $this->deny('Not allowed to view as it is not published.', 'unpublished');
+        }
+
+        return true;
+    }
+}
+
+class AccessGateTestPolicyWithDeniedResponseObject
+{
+    public function create()
+    {
+        return Response::deny('Not allowed.', 'some_code');
+    }
+}
+
+class AccessGateTestPolicyThrowingAuthorizationException
+{
+    public function create()
+    {
+        throw new AuthorizationException('Not allowed.', 'some_code');
     }
 }

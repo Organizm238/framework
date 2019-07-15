@@ -7,6 +7,7 @@ use Exception;
 use ArrayAccess;
 use LogicException;
 use ReflectionClass;
+use ReflectionException;
 use ReflectionParameter;
 use Illuminate\Support\Arr;
 use Illuminate\Contracts\Container\BindingResolutionException;
@@ -24,112 +25,112 @@ class Container implements ArrayAccess, ContainerContract
     /**
      * An array of the types that have been resolved.
      *
-     * @var array
+     * @var bool[]
      */
     protected $resolved = [];
 
     /**
      * The container's bindings.
      *
-     * @var array
+     * @var array[]
      */
     protected $bindings = [];
 
     /**
      * The container's method bindings.
      *
-     * @var array
+     * @var \Closure[]
      */
     protected $methodBindings = [];
 
     /**
      * The container's shared instances.
      *
-     * @var array
+     * @var object[]
      */
     protected $instances = [];
 
     /**
      * The registered type aliases.
      *
-     * @var array
+     * @var string[]
      */
     protected $aliases = [];
 
     /**
      * The registered aliases keyed by the abstract name.
      *
-     * @var array
+     * @var array[]
      */
     protected $abstractAliases = [];
 
     /**
      * The extension closures for services.
      *
-     * @var array
+     * @var array[]
      */
     protected $extenders = [];
 
     /**
      * All of the registered tags.
      *
-     * @var array
+     * @var array[]
      */
     protected $tags = [];
 
     /**
      * The stack of concretions currently being built.
      *
-     * @var array
+     * @var array[]
      */
     protected $buildStack = [];
 
     /**
      * The parameter override stack.
      *
-     * @var array
+     * @var array[]
      */
     protected $with = [];
 
     /**
      * The contextual binding map.
      *
-     * @var array
+     * @var array[]
      */
     public $contextual = [];
 
     /**
      * All of the registered rebound callbacks.
      *
-     * @var array
+     * @var array[]
      */
     protected $reboundCallbacks = [];
 
     /**
      * All of the global resolving callbacks.
      *
-     * @var array
+     * @var \Closure[]
      */
     protected $globalResolvingCallbacks = [];
 
     /**
      * All of the global after resolving callbacks.
      *
-     * @var array
+     * @var \Closure[]
      */
     protected $globalAfterResolvingCallbacks = [];
 
     /**
      * All of the resolving callbacks by class type.
      *
-     * @var array
+     * @var array[]
      */
     protected $resolvingCallbacks = [];
 
     /**
      * All of the after resolving callbacks by class type.
      *
-     * @var array
+     * @var array[]
      */
     protected $afterResolvingCallbacks = [];
 
@@ -358,6 +359,20 @@ class Container implements ArrayAccess, ContainerContract
     }
 
     /**
+     * Register a shared binding if it hasn't already been registered.
+     *
+     * @param  string  $abstract
+     * @param  \Closure|string|null  $concrete
+     * @return void
+     */
+    public function singletonIf($abstract, $concrete = null)
+    {
+        if (! $this->bound($abstract)) {
+            $this->singleton($abstract, $concrete);
+        }
+    }
+
+    /**
      * "Extend" an abstract type in the container.
      *
      * @param  string    $abstract
@@ -546,11 +561,7 @@ class Container implements ArrayAccess, ContainerContract
      */
     protected function getReboundCallbacks($abstract)
     {
-        if (isset($this->reboundCallbacks[$abstract])) {
-            return $this->reboundCallbacks[$abstract];
-        }
-
-        return [];
+        return $this->reboundCallbacks[$abstract] ?? [];
     }
 
     /**
@@ -791,7 +802,11 @@ class Container implements ArrayAccess, ContainerContract
             return $concrete($this, $this->getLastParameterOverride());
         }
 
-        $reflector = new ReflectionClass($concrete);
+        try {
+            $reflector = new ReflectionClass($concrete);
+        } catch (ReflectionException $e) {
+            throw new BindingResolutionException("Target class [$concrete] does not exist.", 0, $e);
+        }
 
         // If the type is not instantiable, the developer is attempting to resolve
         // an abstract type such as an Interface or Abstract Class and there is
@@ -1122,11 +1137,7 @@ class Container implements ArrayAccess, ContainerContract
     {
         $abstract = $this->getAlias($abstract);
 
-        if (isset($this->extenders[$abstract])) {
-            return $this->extenders[$abstract];
-        }
-
-        return [];
+        return $this->extenders[$abstract] ?? [];
     }
 
     /**
